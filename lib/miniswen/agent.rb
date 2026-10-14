@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "securerandom"
 require "time"
 require "miniswen/version"
 require "miniswen/ruby_llm"
@@ -188,7 +189,9 @@ module Miniswen
 
     Result = Data.define(:status, :submission, :messages, :steps, :cost_source,
                          :input_tokens, :output_tokens, :cached_tokens, :thinking_tokens, :cost_usd,
-                         :error) do
+                         :error, :cache_id) do
+      def initialize(cache_id: nil, **attributes) = super(cache_id:, **attributes)
+
       def success? = status == :submitted
 
       def to_h = super.merge(cost_source: cost_source&.to_h, version: Miniswen::VERSION)
@@ -206,7 +209,7 @@ module Miniswen
           input_tokens: data[:input_tokens], output_tokens: data[:output_tokens],
           cached_tokens: data[:cached_tokens], thinking_tokens: data[:thinking_tokens],
           cost_usd: data[:cost_usd],
-          error: data[:error]
+          error: data[:error], cache_id: data[:cache_id]
         )
       end
 
@@ -231,7 +234,7 @@ module Miniswen
     attr_reader :messages, :environment
 
     private attr_reader :max_steps, :max_time, :max_cost, :exec_timeout, :max_output_tokens,
-                        :clock, :reporter
+                        :cache_id, :clock, :reporter
 
     # `model` is a litellm-style name ("openrouter/z-ai/glm-5.2"), optionally
     # suffixed with a reasoning effort ("openrouter/openai/gpt-5.6-luna#xhigh").
@@ -303,7 +306,7 @@ module Miniswen
       Result.new(
         status: :error, submission: nil, messages: @messages || [], steps: @steps.to_i,
         cost_source: cost_source, cost_usd: @cost_known == false ? nil : @cost.to_f,
-        error: error,
+        error: error, cache_id:,
         **(@totals || { input_tokens: 0, output_tokens: 0, cached_tokens: 0, thinking_tokens: 0 })
       )
     end
@@ -323,6 +326,7 @@ module Miniswen
     private
 
     def start(instruction)
+      @cache_id = SecureRandom.uuid
       uname = execute("uname -srvm").output.to_s.strip
       @messages = [
         { role: "system", content: SYSTEM_TEMPLATE },
@@ -340,6 +344,7 @@ module Miniswen
     end
 
     def resume(history)
+      @cache_id = history.cache_id || SecureRandom.uuid
       @messages = answered_messages(history.messages)
 
       @steps = history.steps.to_i
@@ -535,7 +540,7 @@ module Miniswen
     def finish(status, submission: nil)
       Result.new(
         status: status, submission: submission, messages: @messages, steps: @steps,
-        cost_source: cost_source, cost_usd: @cost_known ? @cost : nil, error: nil, **@totals
+        cost_source: cost_source, cost_usd: @cost_known ? @cost : nil, error: nil, cache_id:, **@totals
       )
     end
 
@@ -579,10 +584,14 @@ module Miniswen
     end
 
     def routing_params
-      order = provider_order
-      return {} unless order && @provider == "openrouter"
+      return {} unless @provider == "openrouter"
 
-      { provider: { order: order.split(",").map(&:strip), allow_fallbacks: false } }
+      params = {}
+      params[:prompt_cache_key] = cache_id if @id.start_with?("meta/muse-")
+      if (order = provider_order)
+        params[:provider] = { order: order.split(",").map(&:strip), allow_fallbacks: false }
+      end
+      params
     end
 
     def provider_order = ENV["LEMANS_PROVIDER_ORDER"] || ENV["OPENROUTER_PROVIDER_ORDER"]

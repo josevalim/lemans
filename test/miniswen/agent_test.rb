@@ -336,6 +336,38 @@ class MiniswenAgentTest < Minitest::Test
     ENV.delete("OPENROUTER_PROVIDER_ORDER")
   end
 
+  def test_muse_cache_key
+    {
+      "openrouter/meta/muse-wonder#xhigh" => true,
+      "openrouter/meta/muse-spark-1.3#max" => true,
+      "openrouter/meta/llama-3.3-70b-instruct" => false
+    }.each do |model, cached|
+      with_api_key(:openrouter) { build_agent(model:) }
+      stub_llm("true", SUBMIT)
+      result = agent.run("task")
+      requests = RubyLLM::Test.requests.last(2)
+
+      if cached
+        refute_empty result.cache_id
+        assert_equal [ result.cache_id ] * 2, requests.map { it.params[:prompt_cache_key] }
+
+        stub_llm(SUBMIT)
+        fresh = agent.run("task")
+
+        refute_equal result.cache_id, fresh.cache_id
+        assert_equal fresh.cache_id, RubyLLM::Test.last_request.params[:prompt_cache_key]
+      else
+        assert(requests.none? { it.params.key?(:prompt_cache_key) })
+      end
+    end
+
+    build_agent(model: "test/meta/muse-wonder")
+    stub_llm(SUBMIT)
+    agent.run("task")
+
+    refute RubyLLM::Test.last_request.params.key?(:prompt_cache_key)
+  end
+
   def test_the_output_cap_is_sent_only_when_set_and_clamped_to_the_advertised_maximum
     with_api_key(:openrouter) { build_agent(model: "openrouter/anthropic/test") }
     stub_llm(SUBMIT)
