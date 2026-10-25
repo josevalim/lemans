@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "socket"
+require "uri"
 
 module Miniswen
   class Jail < Local
@@ -29,9 +30,10 @@ module Miniswen
         upstream.close
       end
 
-      def initialize(hosts:, socket:)
+      def initialize(hosts:, socket:, upstream_proxy: ENV["https_proxy"] || ENV["HTTPS_PROXY"])
         @hosts = hosts
         @socket = socket
+        @upstream_proxy = upstream_proxy && !upstream_proxy.empty? ? URI(upstream_proxy) : nil
       end
 
       def start
@@ -51,11 +53,28 @@ module Miniswen
         host, port = target.split(":", 2)
         return client.write("HTTP/1.1 403 Forbidden\r\n\r\n") unless @hosts.include?(host)
 
-        upstream = Socket.tcp(host, port.to_i, connect_timeout: 10)
+        upstream = open_upstream(host, port)
+        return client.write("HTTP/1.1 502 Bad Gateway\r\n\r\n") unless upstream
+
         client.write("HTTP/1.1 200 Connection Established\r\n\r\n")
         self.class.pump(client, upstream)
       ensure
         client.close
+      end
+
+      private
+
+      # A sandbox whose egress is itself a proxy (lemans' Docker allowlist) has
+      # no direct route out: the tunnel goes through that proxy.
+      def open_upstream(host, port)
+        return Socket.tcp(host, port.to_i, connect_timeout: 10) unless @upstream_proxy
+
+        upstream = Socket.tcp(@upstream_proxy.host, @upstream_proxy.port, connect_timeout: 10)
+        upstream.write("CONNECT #{host}:#{port} HTTP/1.1\r\nHost: #{host}:#{port}\r\n\r\n")
+        return upstream if upstream.gets("\r\n\r\n").to_s.split(" ", 3)[1] == "200"
+
+        upstream.close
+        nil
       end
     end
   end
