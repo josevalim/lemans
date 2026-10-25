@@ -44,6 +44,26 @@ class ConfigAgentTest < Minitest::Test
     assert_nil agent.environment.network.hosts
   end
 
+  def test_mcp_servers
+    agent = Lemans::Config::Agent.from_config(full_config.merge(
+                                                "mcp_servers" => { "tidewave" => { "url" => "http://localhost:3000/tidewave/mcp",
+                                                                                   "start" => "bin/rails server" } }
+                                              ))
+
+    assert_equal "http://localhost:3000/tidewave/mcp", agent.mcp_servers.fetch("tidewave").url
+    assert_equal "bin/rails server", agent.mcp_servers.fetch("tidewave").start
+    assert_equal({ "tidewave" => { "url" => "http://localhost:3000/tidewave/mcp", "start" => "bin/rails server" } },
+                 agent.to_h["mcp_servers"])
+    assert_empty Lemans::Config::Agent.from_config(full_config).mcp_servers
+    refute Lemans::Config::Agent.from_config(full_config).to_h.key?("mcp_servers")
+
+    error = assert_raises(Lemans::ConfigError) do
+      Lemans::Config::Agent.from_config(full_config.merge("mcp_servers" => { "tidewave" => { "start" => "x" } }))
+    end
+
+    assert_equal "agent.mcp_servers.tidewave.url must be provided", error.message
+  end
+
   def test_missing_model
     error = assert_raises(Lemans::ConfigError) do
       Lemans::Config::Agent.from_config(full_config.except("model"))

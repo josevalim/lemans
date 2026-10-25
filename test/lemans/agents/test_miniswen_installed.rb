@@ -75,6 +75,21 @@ class MiniswenInstalledTest < Minitest::Test
     assert_equal "submitted", JSON.parse(response.raw_result)["status"]
   end
 
+  def test_mcp_servers_ride_the_command_line
+    config = load_config
+    config.agent.mcp_servers["tidewave"] =
+      Lemans::Config::Agent::MCPServer.new(url: "http://localhost:3000/tidewave/mcp", start: "bin/rails server")
+    agent = Lemans::Agents.build("miniswen-installed", profile: config.agent)
+    shell = TestEnvironment.new(files: { Lemans::Agents::MiniswenInstalled::RESULTS_PATH => remote_result_json })
+
+    response = with_openrouter_key { agent.run(load_task(config), shell) }
+
+    assert_includes shell.commands.last, "--mcp tidewave\\=http://localhost:3000/tidewave/mcp"
+    assert_includes shell.commands.last, "--mcp-start tidewave\\=bin/rails\\ server"
+    assert_equal({ "tidewave" => { "url" => "http://localhost:3000/tidewave/mcp", "start" => "bin/rails server" } },
+                 JSON.parse(JSON.generate(response.trajectory.to_atif)).dig("agent", "extra", "agent_config", "mcp_servers"))
+  end
+
   def test_a_history_ships_to_the_sandbox_in_place_of_the_prompt
     agent, task = build_agent
     shell = TestEnvironment.new(files: { Lemans::Agents::MiniswenInstalled::RESULTS_PATH => remote_result_json })

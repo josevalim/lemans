@@ -65,7 +65,8 @@ module Lemans
           max_time: profile.timeout,
           max_cost: profile.cost_limit,
           exec_timeout: profile.exec_timeout,
-          max_output_tokens: profile.max_output_tokens
+          max_output_tokens: profile.max_output_tokens,
+          mcp_servers: profile.mcp_servers.transform_values(&:to_h)
         )
       end
 
@@ -121,7 +122,8 @@ module Lemans
           wall_time_limit_seconds: profile.timeout,
           exec_timeout_seconds: profile.exec_timeout,
           max_output_tokens: profile.max_output_tokens,
-          max_consecutive_format_errors: ::Miniswen::Agent::MAX_CONSECUTIVE_FORMAT_ERRORS
+          max_consecutive_format_errors: ::Miniswen::Agent::MAX_CONSECUTIVE_FORMAT_ERRORS,
+          mcp_servers: (profile.mcp_servers.transform_values { it.to_h.compact } if profile.mcp_servers.any?)
         }.compact }
       end
     end

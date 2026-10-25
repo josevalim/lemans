@@ -5,6 +5,7 @@ require "securerandom"
 require "time"
 require "miniswen/version"
 require "miniswen/ruby_llm"
+require "miniswen/mcp"
 
 module Miniswen
   # A Ruby port of mini-swe-agent's loop (mini.yaml at commit a83fcae): ask the
@@ -137,6 +138,23 @@ module Miniswen
       ```
     PROMPT
 
+    MCP_TEMPLATE = <<~PROMPT
+      ## MCP tools
+
+      Besides bash, you can call the tools of the MCP servers below. A response may call them instead of, or alongside, bash.
+      Submitting still goes through bash.
+
+      %<servers>s
+    PROMPT
+
+    MCP_SERVER_TEMPLATE = <<~PROMPT
+      ### %<name>s
+
+      Tools: %<tools>s
+
+      %<instructions>s
+    PROMPT
+
     MACOS_SED_NOTE = <<~NOTE
       <important>
       You are on MacOS. For all the below examples, you need to use `sed -i ''` instead of `sed -i`.
@@ -231,7 +249,7 @@ module Miniswen
       def to_h = { name:, model:, priced_as:, registry: }.compact
     end
 
-    attr_reader :messages, :environment
+    attr_reader :messages, :environment, :mcp_servers
 
     private attr_reader :max_steps, :max_time, :max_cost, :exec_timeout, :max_output_tokens,
                         :cache_id, :clock, :reporter
@@ -240,7 +258,7 @@ module Miniswen
     # suffixed with a reasoning effort ("openrouter/openai/gpt-5.6-luna#xhigh").
     # Limits of 0 or nil are disabled.
     def initialize(model:, environment:, max_steps: 0, max_time: 0, max_cost: nil,
-                   exec_timeout: 30, max_output_tokens: 0,
+                   exec_timeout: 30, max_output_tokens: 0, mcp_servers: {},
                    clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) },
                    reporter: nil)
       name, @effort = model.split("#", 2)
@@ -254,6 +272,9 @@ module Miniswen
       @environment = environment
 
       @bash_tool = BashTool.new
+      @mcp_servers = mcp_servers.map do |name, server|
+        MCP.new(name: name.to_s, url: server.fetch(:url), start: server[:start], environment:, timeout: exec_timeout)
+      end
 
       @max_steps = max_steps.to_i
       @max_time = max_time.to_f
@@ -268,6 +289,9 @@ module Miniswen
     # With a `history` (the Result of an interrupted run), the session goes on
     # where it stopped, under the budget the earlier part already spent.
     def run(instruction = nil, history: nil)
+      # Servers boot before the clock starts: their startup is the harness's time, not the model's.
+      mcp_servers.each(&:connect!)
+
       if history
         resume(history)
       else
@@ -293,6 +317,8 @@ module Miniswen
           return finish(:time_limit) if out_of_time?
 
           reporter&.on_tool_call(action)
+          next observe_mcp(action, mcp_call(action)) unless action[:name] == "bash"
+
           result = execute(action.fetch(:arguments).fetch("command"))
           # The submit command's output is observed too, so the final tool
           # call has a linked result in the trajectory.
@@ -300,6 +326,8 @@ module Miniswen
           return finish(:submitted, submission: submission_from(result)) if submitted?(result)
         end
       end
+    ensure
+      mcp_servers.each(&:stop)
     end
 
     def partial_result(error)
@@ -333,7 +361,8 @@ module Miniswen
         { role: "user", content: format(INSTANCE_TEMPLATE,
                                         instruction: instruction,
                                         system_information: uname,
-                                        macos_sed_note: uname.start_with?("Darwin") ? "\n#{MACOS_SED_NOTE}" : "") }
+                                        macos_sed_note: uname.start_with?("Darwin") ? "\n#{MACOS_SED_NOTE}" : "") +
+                                 mcp_prompt }
       ]
 
       @steps = 0
@@ -368,6 +397,33 @@ module Miniswen
     def elapsed(messages)
       times = messages.filter_map { Time.parse(it[:timestamp]) if it[:role] == "assistant" && it[:timestamp] }
       times.empty? ? 0.0 : times.max - times.min
+    end
+
+    def mcp_prompt
+      return "" if mcp_servers.empty?
+
+      servers = mcp_servers.map do |server|
+        format(MCP_SERVER_TEMPLATE, name: server.name, tools: server.tools.keys.join(", "),
+                                    instructions: server.instructions.to_s.strip).strip
+      end
+      "\n#{format(MCP_TEMPLATE, servers: servers.join("\n\n"))}"
+    end
+
+    def tools
+      @tools ||= { bash: @bash_tool }.merge(*mcp_servers.map { |server| server.tools.transform_keys(&:to_sym) })
+    end
+
+    def mcp_server_for(tool_name) = mcp_servers.find { it.tool?(tool_name) }
+
+    def mcp_call(action) = mcp_server_for(action[:name]).call(action[:name], action[:arguments])
+
+    def observe_mcp(action, outcome)
+      observe_message({
+                        role: "tool",
+                        tool_call_id: action[:id],
+                        content: truncate(outcome.text),
+                        observation: { exit_code: outcome.error ? 1 : 0, output: truncate(outcome.text) }
+                      })
     end
 
     def execute(command)
@@ -447,6 +503,12 @@ module Miniswen
       return NO_TOOL_CALLS_ERROR if tool_calls.empty?
 
       tool_calls.each do |call|
+        if mcp_server_for(call[:name])
+          next if call[:arguments].is_a?(Hash)
+
+          return "The #{call[:name]} tool call arguments are not a valid JSON object. Resend the call with a JSON object."
+        end
+
         error = +""
         error << "Unknown tool '#{call[:name]}'." if call[:name] != "bash"
         arguments = call[:arguments]
@@ -549,7 +611,7 @@ module Miniswen
       model_info, provider = resolved
       response = provider.complete(
         with_cache_breakpoints(messages.map { as_ruby_llm(it) }),
-        tools: { bash: @bash_tool },
+        tools: tools,
         temperature: nil,
         model: model_info,
         params: routing_params.merge(output_cap_params(model_info)),

@@ -92,6 +92,10 @@ agent:
   step_limit: 100
   cost_limit: 5.0
   # max_output_tokens: 32768                        # [optional] output cap per model call, for hosts that reserve the model's full max output out of the context window (default: the provider's)
+  # mcp_servers:                                    # [optional] miniswen agents only: MCP servers (stateless Streamable HTTP) whose tools the model gets next to bash
+  #   tidewave:
+  #     url: http://localhost:3000/tidewave/mcp     # reached from where the agent's commands run (the sandbox, or miniswen's jail)
+  #     start: bin/rails server -p 3000             # [optional] boots the server there before the agent starts, again if it goes away; stopped after the agent
   environment:
     network: # the sandbox network while the agent works: just enough to reach the model
       mode: allowlist
@@ -363,6 +367,13 @@ $ gem install miniswen
 $ miniswen --model 'openrouter/openai/gpt-5.6-luna' --prompt 'Write hello-world to test.txt'
 
 ...
+```
+
+Pass `--mcp NAME=URL` (repeatable) to give the model the tools of an MCP server speaking the stateless Streamable HTTP transport, and `--mcp-start NAME=COMMAND` to have miniswen boot it where the commands run:
+
+```sh
+$ miniswen --model 'openrouter/openai/gpt-5.6-luna' --prompt 'Why is the signup page slow?' \
+    --mcp tidewave=http://localhost:3000/tidewave/mcp --mcp-start 'tidewave=bin/rails server -p 3000'
 ```
 
 Currently, it's a one-shot agent that doesn't ask any questions. It's mostly useful for playing with eval ideas before encoding them as lemans tasks.

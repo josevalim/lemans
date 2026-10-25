@@ -36,6 +36,8 @@ module Miniswen
       # Tool calls are reported separately so the command is visible before
       # its output arrives. It is not added to the trajectory sent to the LLM.
       def on_tool_call(call)
+        return io.puts("  #{style("#{call[:name]} #{JSON.generate(call[:arguments])}", :command)}") if call[:name].to_s.start_with?("mcp__")
+
         command = call.dig(:arguments, "command") || call.dig(:arguments, :command)
         return if command.to_s.empty?
 

@@ -173,6 +173,20 @@ module Miniswen
           @allowed_hosts = v.split(",").map(&:strip).reject(&:empty?)
         end
 
+        opts.on("--mcp=NAME=URL", String, "Offer the tools of the MCP server at URL (stateless HTTP), repeatable") do |v|
+          name, url = v.split("=", 2)
+          raise OptionParser::InvalidArgument, "--mcp expects NAME=URL" if name.to_s.empty? || url.to_s.empty?
+
+          ((options[:mcp_servers] ||= {})[name] ||= {})[:url] = url
+        end
+
+        opts.on("--mcp-start=NAME=COMMAND", String, "Boot the MCP server NAME with COMMAND unless it already answers") do |v|
+          name, command = v.split("=", 2)
+          raise OptionParser::InvalidArgument, "--mcp-start expects NAME=COMMAND" if name.to_s.empty? || command.to_s.empty?
+
+          ((options[:mcp_servers] ||= {})[name] ||= {})[:start] = command
+        end
+
         opts.on("--workdir=DIR", String, "Run commands in DIR instead of the current directory") do |v|
           @workdir = v
         end
@@ -202,6 +216,10 @@ module Miniswen
       return if @refresh_registry
 
       raise "Use -m to specify the model" unless @model
+      if (unnamed = options[:mcp_servers]&.find { |_, server| !server[:url] })
+        raise "--mcp-start #{unnamed.first} needs a matching --mcp #{unnamed.first}=URL"
+      end
+
       raise "Please, provide instructions via -p option" unless @instruction || @history
     end
   end

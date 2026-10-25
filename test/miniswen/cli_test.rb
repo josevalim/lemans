@@ -158,6 +158,20 @@ class MiniswenCLITest < Minitest::Test
     assert_equal %w[index.rubygems.org rubygems.org], cli.instance_variable_get(:@allowed_hosts)
   end
 
+  def test_parses_mcp_servers
+    cli = parse("--mcp=tidewave=http://localhost:3000/tidewave/mcp?include_browser_tools=false",
+                "--mcp-start=tidewave=bin/rails server -p 3000", "--mcp=docs=http://localhost:4000/mcp",
+                "-m", "ollama/x", "-p", "task")
+
+    assert_equal({ "tidewave" => { url: "http://localhost:3000/tidewave/mcp?include_browser_tools=false",
+                                   start: "bin/rails server -p 3000" },
+                   "docs" => { url: "http://localhost:4000/mcp" } }, cli.options[:mcp_servers])
+
+    error = assert_raises(RuntimeError) { parse("--mcp-start=tidewave=bin/rails server", "-m", "ollama/x", "-p", "task") }
+
+    assert_equal "--mcp-start tidewave needs a matching --mcp tidewave=URL", error.message
+  end
+
   def test_write_atif_produces_a_trajectory_document
     Dir.mktmpdir do |dir|
       path = File.join(dir, "trajectory.json")

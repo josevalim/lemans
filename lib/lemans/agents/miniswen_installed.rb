@@ -85,6 +85,10 @@ module Lemans
         argv += [ "--max-cost", profile.cost_limit.to_i ] if profile.cost_limit
         argv += [ "--workdir", task.environment.workdir ]
         argv += [ "--allow-hosts", allowed_hosts.join(",") ] if allowed_hosts.any?
+        profile.mcp_servers.each do |name, server|
+          argv += [ "--mcp", "#{name}=#{server.url}" ]
+          argv += [ "--mcp-start", "#{name}=#{server.start}" ] if server.start
+        end
         argv.map { Shellwords.escape(it.to_s) }.join(" ")
       end
     end

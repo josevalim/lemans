@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- miniswen: offer the tools of MCP servers next to bash (`--mcp NAME=URL`, stateless Streamable HTTP), booting them with `--mcp-start NAME=COMMAND`; lemans reads them from `agent.mcp_servers` in bench.yml.
+
 ## [1.5.2] - 2026-10-14
 
 - `lemans --require/-r [command]`: load agent, backend plugins (`lemans -r plugin.rb restart RUN`)
