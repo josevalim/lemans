@@ -409,7 +409,7 @@ class MiniswenAgentTest < Minitest::Test
     request = RubyLLM::Test.last_request
 
     assert_equal :submitted, result.status
-    assert_equal({ prompt_cache_key: result.cache_id, max_completion_tokens: 32_768 }, request.params)
+    assert_equal({ max_tokens: 32_768 }, request.params)
     assert_equal "xhigh", request.thinking.effort.to_s
     # 95 fresh and 5 cached input tokens at $0.10 and $0.002 per million, 20 output at $0.20.
     assert_in_delta 2 * 0.00001351, result.cost_usd

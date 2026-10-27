@@ -660,7 +660,6 @@ module Miniswen
     end
 
     def routing_params
-      return { prompt_cache_key: cache_id } if @provider == "meta"
       return {} unless @provider == "openrouter"
 
       params = {}
@@ -680,7 +679,7 @@ module Miniswen
 
       cap = [ info&.max_tokens, max_output_tokens ].compact.min
       provider_class = RubyLLM::Provider.providers[model_info.provider.to_sym]
-      if [ RubyLLM::Providers::OpenAI, RubyLLM::Providers::Azure, Providers::Meta ].include?(provider_class)
+      if [ RubyLLM::Providers::OpenAI, RubyLLM::Providers::Azure ].include?(provider_class)
         { max_completion_tokens: cap }
       elsif provider_class <= RubyLLM::Providers::OpenAI || provider_class <= RubyLLM::Providers::Anthropic
         { max_tokens: cap }
