@@ -616,7 +616,7 @@ module Miniswen
     def complete(messages)
       model_info, provider = resolved
       response = provider.complete(
-        with_cache_breakpoints(messages.map { as_ruby_llm(it) }),
+        with_cache_breakpoints(messages.filter_map { as_ruby_llm(it) }),
         tools: tools,
         temperature: nil,
         model: model_info,
@@ -710,9 +710,14 @@ module Miniswen
       @resolved ||= RubyLLM::Models.resolve(@id, provider: @provider, assume_exists: !@provider.nil?)
     end
 
+    # A turn that produced neither text nor a call (its output all spent on
+    # hidden reasoning) has nothing a provider accepts as content; the nudge
+    # that follows it tells the model what happened.
     def as_ruby_llm(entry)
       case entry[:role]
       when "assistant"
+        return nil if entry[:content].to_s.empty? && Array(entry[:tool_calls]).empty?
+
         RubyLLM::Message.new(role: :assistant, content: entry[:content],
                              thinking: as_ruby_llm_thinking(entry),
                              tool_calls: as_ruby_llm_tool_calls(entry[:tool_calls]))

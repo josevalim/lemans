@@ -72,6 +72,16 @@ class MiniswenAgentTest < Minitest::Test
     assert(result.messages.any? { it[:content].include?("No tool calls found in the response") })
   end
 
+  def test_a_turn_without_text_or_calls_is_left_out_of_the_replay
+    stub_llm({ content: "", finish_reason: "max_tokens" }, SUBMIT)
+
+    result = agent.run("task")
+
+    assert_equal :submitted, result.status
+    assert_equal "", result.messages[2][:content]
+    assert_equal %i[system user user], RubyLLM::Test.last_request.messages.map(&:role)
+  end
+
   def test_a_truncated_response_is_told_to_be_concise
     stub_llm({ content: "ramble", finish_reason: "length" }, "true", SUBMIT)
 
