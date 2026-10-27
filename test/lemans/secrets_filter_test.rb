@@ -15,14 +15,16 @@ class SecretsFilterTest < Minitest::Test
   def test_default
     ENV["LEMANSTEST_API_KEY"] = "prov-key-0123456789"
     ENV["LEMANSTEST_TOKEN"] = "tok-0123456789"
+    ENV["LEMANSTEST_CONNECT_KEY"] = "connect-0123456789"
     ENV["LEMANSTEST_MODEL"] = "not-secret-just-long"
     filter = Lemans::SecretsFilter.default
 
-    assert_equal "<filtered> <filtered>", filter.filter("prov-key-0123456789 tok-0123456789")
+    assert_equal "<filtered> <filtered> <filtered>", filter.filter("prov-key-0123456789 tok-0123456789 connect-0123456789")
     assert_equal "not-secret-just-long", filter.filter("not-secret-just-long")
   ensure
     ENV.delete("LEMANSTEST_API_KEY")
     ENV.delete("LEMANSTEST_TOKEN")
+    ENV.delete("LEMANSTEST_CONNECT_KEY")
     ENV.delete("LEMANSTEST_MODEL")
   end
 end

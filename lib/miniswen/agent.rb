@@ -273,7 +273,8 @@ module Miniswen
 
       @bash_tool = BashTool.new
       @mcp_servers = mcp_servers.map do |name, server|
-        MCP.new(name: name.to_s, url: server.fetch(:url), start: server[:start], environment:, timeout: exec_timeout)
+        MCP.new(name: name.to_s, url: server.fetch(:url), start: server[:start], ready: server[:ready],
+                env: Array(server[:env]), environment:, timeout: exec_timeout)
       end
 
       @max_steps = max_steps.to_i

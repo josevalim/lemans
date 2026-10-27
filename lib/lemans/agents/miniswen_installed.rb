@@ -56,7 +56,7 @@ module Lemans
       # A missing credential fails the run before the sandbox executes
       # anything: it is the operator's configuration to fix, not a trial result.
       def provider_env(environment)
-        agent_for(environment).provider_env
+        agent_for(environment).provider_env.merge(mcp_env)
       rescue RubyLLM::ConfigurationError => e
         raise ConfigError, "miniswen-installed: #{e.message}"
       end
@@ -88,6 +88,8 @@ module Lemans
         profile.mcp_servers.each do |name, server|
           argv += [ "--mcp", "#{name}=#{server.url}" ]
           argv += [ "--mcp-start", "#{name}=#{server.start}" ] if server.start
+          argv += [ "--mcp-ready", "#{name}=#{server.ready}" ] if server.ready
+          argv += [ "--mcp-env", "#{name}=#{server.env.join(",")}" ] if server.env&.any?
         end
         argv.map { Shellwords.escape(it.to_s) }.join(" ")
       end

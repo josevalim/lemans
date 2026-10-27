@@ -58,6 +58,8 @@ module Lemans
       def agent_for(environment)
         raise ConfigError, "miniswen needs a model to drive" if model.to_s.empty?
 
+        mcp_env
+
         ::Miniswen::Agent.new(
           model: model.to_s,
           environment: environment,
@@ -68,6 +70,16 @@ module Lemans
           max_output_tokens: profile.max_output_tokens,
           mcp_servers: profile.mcp_servers.transform_values(&:to_h)
         )
+      end
+
+      # What the MCP servers' start commands are handed from this process: a
+      # missing one is the operator's configuration to fix, not a trial result.
+      def mcp_env
+        names = profile.mcp_servers.values.flat_map { it.env.to_a }
+        missing = names.reject { ENV.key?(it) }
+        raise ConfigError, "agent.mcp_servers needs #{missing.join(", ")} set in the environment" if missing.any?
+
+        ENV.slice(*names)
       end
 
       def detail_for(result)

@@ -78,16 +78,29 @@ class MiniswenInstalledTest < Minitest::Test
   def test_mcp_servers_ride_the_command_line
     config = load_config
     config.agent.mcp_servers["tidewave"] =
-      Lemans::Config::Agent::MCPServer.new(url: "http://localhost:3000/tidewave/mcp", start: "bin/rails server")
+      Lemans::Config::Agent::MCPServer.new(url: "http://localhost:3000/tidewave/mcp", start: "bin/rails server",
+                                           ready: "test -f ready", env: [ "LEMANSTEST_CONNECT_KEY" ])
     agent = Lemans::Agents.build("miniswen-installed", profile: config.agent)
     shell = TestEnvironment.new(files: { Lemans::Agents::MiniswenInstalled::RESULTS_PATH => remote_result_json })
 
+    error = assert_raises(Lemans::ConfigError) { with_openrouter_key { agent.run(load_task(config), shell) } }
+
+    assert_equal "agent.mcp_servers needs LEMANSTEST_CONNECT_KEY set in the environment", error.message
+
+    ENV["LEMANSTEST_CONNECT_KEY"] = "connect-key"
     response = with_openrouter_key { agent.run(load_task(config), shell) }
 
     assert_includes shell.commands.last, "--mcp tidewave\\=http://localhost:3000/tidewave/mcp"
     assert_includes shell.commands.last, "--mcp-start tidewave\\=bin/rails\\ server"
-    assert_equal({ "tidewave" => { "url" => "http://localhost:3000/tidewave/mcp", "start" => "bin/rails server" } },
+    assert_includes shell.commands.last, "--mcp-ready tidewave\\=test\\ -f\\ ready"
+    assert_includes shell.commands.last, "--mcp-env tidewave\\=LEMANSTEST_CONNECT_KEY"
+    refute_includes shell.commands.last, "connect-key"
+    assert_equal "connect-key", shell.envs.last["LEMANSTEST_CONNECT_KEY"]
+    assert_equal({ "tidewave" => { "url" => "http://localhost:3000/tidewave/mcp", "start" => "bin/rails server",
+                                   "ready" => "test -f ready", "env" => [ "LEMANSTEST_CONNECT_KEY" ] } },
                  JSON.parse(JSON.generate(response.trajectory.to_atif)).dig("agent", "extra", "agent_config", "mcp_servers"))
+  ensure
+    ENV.delete("LEMANSTEST_CONNECT_KEY")
   end
 
   def test_a_history_ships_to_the_sandbox_in_place_of_the_prompt

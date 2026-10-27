@@ -25,6 +25,11 @@ class MiniswenJailTest < Minitest::Test
     refute_includes File.read("/proc/#{holder}/environ"), "OPENROUTER"
   end
 
+  def test_commands_get_the_environment_they_are_handed
+    assert_equal "handed\n", @jail.exec("echo $MINISWEN_HANDED", env: { "MINISWEN_HANDED" => "handed" }).output
+    assert_equal "0\n", @jail.exec("env | grep -c OPENROUTER", env: { "MINISWEN_HANDED" => "handed" }).output
+  end
+
   def test_commands_get_the_containers_path_not_the_harness_processes
     path = ENV.fetch("PATH")
     ENV["PATH"] = "/harness/bin:#{path}"

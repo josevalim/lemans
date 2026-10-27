@@ -57,16 +57,21 @@ module Miniswen
     # Not a Miniswen::Error: miniswen.rb loads this file before defining it.
     class Unreachable < StandardError; end
 
-    attr_reader :name, :url, :start, :instructions, :tools
+    attr_reader :name, :url, :start, :ready, :env, :instructions, :tools
 
     private attr_reader :environment, :timeout, :boot_timeout, :clock
 
-    def initialize(name:, url:, environment:, start: nil, timeout: 300, boot_timeout: 180,
+    # `env` names variables of this process the start command gets (secrets,
+    # say), and `ready` is a command that succeeds once the server is usable,
+    # if answering is not enough.
+    def initialize(name:, url:, environment:, start: nil, ready: nil, env: [], timeout: 300, boot_timeout: 180,
                    clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @name = name
       @url = url
       @environment = environment
       @start = start
+      @ready = ready
+      @env = env
       @timeout = timeout
       @boot_timeout = boot_timeout
       @clock = clock
@@ -151,7 +156,8 @@ module Miniswen
     def boot
       stop
       launched = environment.exec(
-        "setsid sh -c #{Shellwords.escape(start)} > #{log_path} 2>&1 < /dev/null & echo $!", timeout: 30
+        "setsid sh -c #{Shellwords.escape(start)} > #{log_path} 2>&1 < /dev/null & echo $!", timeout: 30,
+        env: ENV.slice(*env)
       )
       @pid = Integer(launched.output.to_s.strip.lines.last.to_s, exception: false)
       raise InfrastructureError, "MCP server #{name} did not start: #{launched.output}" unless launched.success? && @pid
@@ -173,6 +179,17 @@ module Miniswen
 
         sleep CONNECT_ATTEMPT_INTERVAL
         retry
+      end
+      wait_until_ready(deadline) if ready
+    end
+
+    def wait_until_ready(deadline)
+      until environment.exec(ready, timeout: 30).success?
+        if clock.call >= deadline || !alive?
+          raise InfrastructureError, "MCP server #{name} did not get ready (#{ready})#{server_log_tail}"
+        end
+
+        sleep CONNECT_ATTEMPT_INTERVAL
       end
     end
 

@@ -47,12 +47,17 @@ class ConfigAgentTest < Minitest::Test
   def test_mcp_servers
     agent = Lemans::Config::Agent.from_config(full_config.merge(
                                                 "mcp_servers" => { "tidewave" => { "url" => "http://localhost:3000/tidewave/mcp",
-                                                                                   "start" => "bin/rails server" } }
+                                                                                   "start" => "bin/rails server",
+                                                                                   "ready" => "test -f /tmp/ready",
+                                                                                   "env" => [ "TIDEWAVE_CONNECT_KEY" ] } }
                                               ))
 
     assert_equal "http://localhost:3000/tidewave/mcp", agent.mcp_servers.fetch("tidewave").url
     assert_equal "bin/rails server", agent.mcp_servers.fetch("tidewave").start
-    assert_equal({ "tidewave" => { "url" => "http://localhost:3000/tidewave/mcp", "start" => "bin/rails server" } },
+    assert_equal "test -f /tmp/ready", agent.mcp_servers.fetch("tidewave").ready
+    assert_equal [ "TIDEWAVE_CONNECT_KEY" ], agent.mcp_servers.fetch("tidewave").env
+    assert_equal({ "tidewave" => { "url" => "http://localhost:3000/tidewave/mcp", "start" => "bin/rails server",
+                                   "ready" => "test -f /tmp/ready", "env" => [ "TIDEWAVE_CONNECT_KEY" ] } },
                  agent.to_h["mcp_servers"])
     assert_empty Lemans::Config::Agent.from_config(full_config).mcp_servers
     refute Lemans::Config::Agent.from_config(full_config).to_h.key?("mcp_servers")

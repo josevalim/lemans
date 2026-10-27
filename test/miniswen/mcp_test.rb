@@ -134,6 +134,51 @@ class MiniswenMCPTest < Minitest::Test
     assert_equal "kill -TERM -- -4242 2>/dev/null; true", env.commands.last
   end
 
+  def test_a_server_with_a_ready_command_is_waited_for_and_handed_its_environment
+    env = MCPEnv.new(up: false)
+    boot = "setsid sh -c start > /tmp/miniswen-mcp-tidewave.log 2>&1 < /dev/null & echo $!"
+    env.on(boot, "4242\n")
+    env.on("test -f ready", "", exit_code: 1)
+    handed = nil
+    booting = env.method(:exec)
+    env.define_singleton_method(:exec) do |command, **options|
+      if command == boot
+        self.up = true
+        handed = options[:env]
+      end
+      on("test -f ready", "") if command == "test -f ready" && commands.count("test -f ready") == 1
+      booting.call(command, **options)
+    end
+    ENV["MINISWEN_TEST_SECRET"] = "s3cret"
+    server = Miniswen::MCP.new(name: "tidewave", url: URL, start: "start", ready: "test -f ready",
+                               env: %w[MINISWEN_TEST_SECRET MINISWEN_TEST_UNSET], environment: env)
+    server.stub(:sleep, nil) { server.connect! }
+
+    assert_equal({ "MINISWEN_TEST_SECRET" => "s3cret" }, handed)
+    assert_equal 2, env.commands.count("test -f ready")
+    assert_equal [ "mcp__tidewave__project_eval" ], server.tools.keys
+  ensure
+    ENV.delete("MINISWEN_TEST_SECRET")
+  end
+
+  def test_a_server_that_never_gets_ready_is_an_infrastructure_failure
+    env = MCPEnv.new
+    env.on("test -f ready", "", exit_code: 1)
+    env.on("kill -0 4242", "", exit_code: 1)
+    env.on("setsid sh -c start > /tmp/miniswen-mcp-tidewave.log 2>&1 < /dev/null & echo $!", "4242\n")
+    env.up = false
+    booting = env.method(:exec)
+    env.define_singleton_method(:exec) do |command, **options|
+      self.up = true if command.start_with?("setsid")
+      booting.call(command, **options)
+    end
+    server = Miniswen::MCP.new(name: "tidewave", url: URL, start: "start", ready: "test -f ready", environment: env)
+
+    error = assert_raises(Miniswen::InfrastructureError) { server.connect! }
+
+    assert_includes error.message, "MCP server tidewave did not get ready (test -f ready)"
+  end
+
   def test_the_request_script_posts_through_a_real_shell
     received = []
     server = WEBrick::HTTPServer.new(Port: 0, BindAddress: "127.0.0.1", Logger: WEBrick::Log.new(IO::NULL), AccessLog: [])

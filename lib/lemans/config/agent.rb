@@ -36,7 +36,7 @@ module Lemans
         def mcp_server!(name, entry)
           raise ConfigError, "agent.mcp_servers.#{name}.url must be provided" unless entry&.dig("url")
 
-          MCPServer.new(url: entry["url"], start: entry["start"])
+          MCPServer.new(url: entry["url"], start: entry["start"], ready: entry["ready"], env: entry["env"] && Array(entry["env"]))
         end
       end
 
@@ -61,7 +61,7 @@ module Lemans
       end
 
       Environment = Struct.new(:network, keyword_init: true)
-      MCPServer = Struct.new(:url, :start, keyword_init: true)
+      MCPServer = Struct.new(:url, :start, :ready, :env, keyword_init: true)
 
       def initialize(name, model)
         @name = name

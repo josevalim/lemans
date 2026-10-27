@@ -187,6 +187,20 @@ module Miniswen
           ((options[:mcp_servers] ||= {})[name] ||= {})[:start] = command
         end
 
+        opts.on("--mcp-ready=NAME=COMMAND", String, "Wait after booting NAME until COMMAND succeeds") do |v|
+          name, command = v.split("=", 2)
+          raise OptionParser::InvalidArgument, "--mcp-ready expects NAME=COMMAND" if name.to_s.empty? || command.to_s.empty?
+
+          ((options[:mcp_servers] ||= {})[name] ||= {})[:ready] = command
+        end
+
+        opts.on("--mcp-env=NAME=VARS", String, "Pass these environment variables (comma-separated) to NAME's start command") do |v|
+          name, vars = v.split("=", 2)
+          raise OptionParser::InvalidArgument, "--mcp-env expects NAME=VARS" if name.to_s.empty? || vars.to_s.empty?
+
+          ((options[:mcp_servers] ||= {})[name] ||= {})[:env] = vars.split(",").map(&:strip).reject(&:empty?)
+        end
+
         opts.on("--workdir=DIR", String, "Run commands in DIR instead of the current directory") do |v|
           @workdir = v
         end
@@ -217,7 +231,7 @@ module Miniswen
 
       raise "Use -m to specify the model" unless @model
       if (unnamed = options[:mcp_servers]&.find { |_, server| !server[:url] })
-        raise "--mcp-start #{unnamed.first} needs a matching --mcp #{unnamed.first}=URL"
+        raise "--mcp-* #{unnamed.first} options need a matching --mcp #{unnamed.first}=URL"
       end
 
       raise "Please, provide instructions via -p option" unless @instruction || @history

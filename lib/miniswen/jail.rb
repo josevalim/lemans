@@ -67,7 +67,7 @@ module Miniswen
     def spawn_options = super.merge(unsetenv_others: true)
 
     def command_env(env)
-      variables = container_env.merge(env.to_h).slice(*container_variables)
+      variables = container_env.slice(*container_variables).merge(env.to_h)
       return variables unless @allowed_hosts
 
       proxy = "http://127.0.0.1:#{PROXY_PORT}"

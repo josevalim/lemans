@@ -160,16 +160,18 @@ class MiniswenCLITest < Minitest::Test
 
   def test_parses_mcp_servers
     cli = parse("--mcp=tidewave=http://localhost:3000/tidewave/mcp?include_browser_tools=false",
-                "--mcp-start=tidewave=bin/rails server -p 3000", "--mcp=docs=http://localhost:4000/mcp",
+                "--mcp-start=tidewave=bin/rails server -p 3000", "--mcp-ready=tidewave=test -f /tmp/ready",
+                "--mcp-env=tidewave=TIDEWAVE_CONNECT_KEY, TIDEWAVE_TEAM_ID", "--mcp=docs=http://localhost:4000/mcp",
                 "-m", "ollama/x", "-p", "task")
 
     assert_equal({ "tidewave" => { url: "http://localhost:3000/tidewave/mcp?include_browser_tools=false",
-                                   start: "bin/rails server -p 3000" },
+                                   start: "bin/rails server -p 3000", ready: "test -f /tmp/ready",
+                                   env: %w[TIDEWAVE_CONNECT_KEY TIDEWAVE_TEAM_ID] },
                    "docs" => { url: "http://localhost:4000/mcp" } }, cli.options[:mcp_servers])
 
     error = assert_raises(RuntimeError) { parse("--mcp-start=tidewave=bin/rails server", "-m", "ollama/x", "-p", "task") }
 
-    assert_equal "--mcp-start tidewave needs a matching --mcp tidewave=URL", error.message
+    assert_equal "--mcp-* tidewave options need a matching --mcp tidewave=URL", error.message
   end
 
   def test_write_atif_produces_a_trajectory_document
