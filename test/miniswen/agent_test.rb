@@ -401,6 +401,28 @@ class MiniswenAgentTest < Minitest::Test
     refute RubyLLM::Test.last_request.params.key?(:prompt_cache_key)
   end
 
+  def test_meta_drives_muse_on_its_own_api
+    with_api_key(:muse) { build_agent(model: "meta/muse-spark-1.3-contributor#xhigh", max_output_tokens: 32_768) }
+    stub_llm("true", SUBMIT)
+
+    result = agent.run("task")
+    request = RubyLLM::Test.last_request
+
+    assert_equal :submitted, result.status
+    assert_equal({ prompt_cache_key: result.cache_id, max_completion_tokens: 32_768 }, request.params)
+    assert_equal "xhigh", request.thinking.effort.to_s
+    # 95 fresh and 5 cached input tokens at $0.10 and $0.002 per million, 20 output at $0.20.
+    assert_in_delta 2 * 0.00001351, result.cost_usd
+    assert_equal "meta/muse-spark-1.3-contributor", result.cost_source.priced_as
+
+    original = RubyLLM.config.muse_api_key
+    RubyLLM.config.muse_api_key = "muse-key"
+
+    assert_equal({ "MUSE_API_KEY" => "muse-key" }, agent.provider_env)
+  ensure
+    RubyLLM.config.muse_api_key = original
+  end
+
   def test_the_output_cap_is_sent_only_when_set_and_clamped_to_the_advertised_maximum
     with_api_key(:openrouter) { build_agent(model: "openrouter/anthropic/test") }
     stub_llm(SUBMIT)

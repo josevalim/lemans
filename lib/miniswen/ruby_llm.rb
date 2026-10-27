@@ -15,6 +15,8 @@ RubyLLM.configure do |config|
   config.retry_interval = 1
 end
 
+require "miniswen/providers/meta"
+
 # ruby_llm reads no API keys from ENV on its own; the conventional variable is the provider's
 # config option upcased.
 RubyLLM.configure do |config|
