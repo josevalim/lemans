@@ -309,6 +309,20 @@ class MiniswenAgentTest < Minitest::Test
     assert(raw.all? { it.value.first[:cache_control] == { type: "ephemeral" } })
   end
 
+  def test_anthropic_marks_cache_breakpoints
+    with_api_key(:anthropic) { build_agent(model: "anthropic/test") }
+    stub_llm("true", SUBMIT)
+    agent.run("task")
+
+    messages = RubyLLM::Test.last_request.messages
+    raw = messages.map(&:content).grep(RubyLLM::Content::Raw)
+
+    assert_equal 2, raw.size
+    assert(raw.all? { it.value.first[:cache_control] == { type: "ephemeral" } })
+    assert_equal({ type: "tool_result", tool_use_id: messages.last.tool_call_id },
+                 messages.last.content.value.first.slice(:type, :tool_use_id))
+  end
+
   def test_a_plain_model_sends_no_cache_breakpoints
     stub_llm(SUBMIT)
     agent.run("task")

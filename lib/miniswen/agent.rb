@@ -629,7 +629,7 @@ module Miniswen
 
     # Anthropic bills every token fresh unless the request marks explicit cache
     # breakpoints
-    def explicit_cache? = @provider == "openrouter" && @id.to_s.start_with?("anthropic/")
+    def explicit_cache? = @provider == "anthropic" || (@provider == "openrouter" && @id.to_s.start_with?("anthropic/"))
 
     def with_cache_breakpoints(messages)
       return messages unless explicit_cache?
@@ -639,11 +639,19 @@ module Miniswen
         text = message.content
         next unless text.is_a?(String) && !text.empty?
 
-        message.content = RubyLLM::Content::Raw.new(
-          [ { type: "text", text: text, cache_control: CACHE_CONTROL } ]
-        )
+        message.content = RubyLLM::Content::Raw.new([ cached_block(message, text) ])
       end
       messages
+    end
+
+    # Anthropic's own API takes a raw tool message's blocks as its whole
+    # content, so the block must be the tool result itself.
+    def cached_block(message, text)
+      if @provider == "anthropic" && message.role == :tool
+        { type: "tool_result", tool_use_id: message.tool_call_id, content: text, cache_control: CACHE_CONTROL }
+      else
+        { type: "text", text: text, cache_control: CACHE_CONTROL }
+      end
     end
 
     def routing_params
