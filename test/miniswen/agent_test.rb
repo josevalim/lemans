@@ -202,6 +202,15 @@ class MiniswenAgentTest < Minitest::Test
     assert_match(/cost_limit cannot be enforced/, error.message)
   end
 
+  def test_a_long_prompt_tier_prices_requests_past_its_threshold
+    stub_llm({ cmd: "true", input_tokens: 95 }, { **SUBMIT, input_tokens: 196 })
+
+    result = agent.stub(:long_prompt_tier, { threshold: 100, multiplier: 5 }) { agent.run("task") }
+
+    assert_in_delta 0.01, result.messages[2][:metrics][:cost_usd]
+    assert_in_delta 0.0601, result.messages[4][:metrics][:cost_usd]
+  end
+
   def test_an_unpriced_model_is_reported_as_unknown_cost_not_as_free
     build_agent(model: "test-unpriced")
     stub_llm("true", SUBMIT)

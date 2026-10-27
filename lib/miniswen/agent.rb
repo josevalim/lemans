@@ -41,6 +41,11 @@ module Miniswen
     # Providers that serve local inference (and cost zero)
     LOCAL_PROVIDERS = %i[ollama gpustack].freeze
 
+    # Models whose every price goes up for a request whose prompt (cache reads
+    # and writes included) passes a threshold; the registry carries only the
+    # standard tier.
+    LONG_PROMPT_PRICING = { "claude-haiku-5-5" => { threshold: 100_000, multiplier: 5 } }.freeze
+
     SYSTEM_TEMPLATE = <<~PROMPT
       You are a helpful assistant that can interact with a computer.
     PROMPT
@@ -822,10 +827,16 @@ module Miniswen
       # Providers usually fold thinking into output_tokens; max() bills the
       # larger count once and can never double-bill.
       generated = [ response.output_tokens.to_i, tokens&.thinking.to_i ].max
-      ((response.input_tokens.to_i * input) +
+      cost = ((response.input_tokens.to_i * input) +
         (tokens&.cached.to_i * cache_read) +
         (tokens&.cache_creation.to_i * cache_write) +
         (generated * output)) / 1_000_000.0
+
+      tier = long_prompt_tier
+      prompt = response.input_tokens.to_i + tokens&.cached.to_i + tokens&.cache_creation.to_i
+      tier && prompt > tier[:threshold] ? cost * tier[:multiplier] : cost
     end
+
+    def long_prompt_tier = LONG_PROMPT_PRICING[info&.id]
   end
 end
